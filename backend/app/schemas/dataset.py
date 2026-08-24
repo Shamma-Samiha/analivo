@@ -1,6 +1,56 @@
 from pydantic import BaseModel
 
 
+class NumericColumnProfile(BaseModel):
+    mean: float | None
+    median: float | None
+    standard_deviation: float | None
+    minimum: float | None
+    percentile_25: float | None
+    percentile_75: float | None
+    maximum: float | None
+
+
+class TopCategoricalValue(BaseModel):
+    value: str | int | float | bool | None
+    count: int
+    percentage: float
+
+
+class CategoricalColumnProfile(BaseModel):
+    unique_count: int
+    top_values: list[TopCategoricalValue]
+
+
+class ColumnProfile(BaseModel):
+    column_name: str
+    pandas_dtype: str
+    type_classification: str
+    non_null_count: int
+    missing_count: int
+    missing_percentage: float
+    unique_count: int
+    numeric_profile: NumericColumnProfile | None = None
+    categorical_profile: CategoricalColumnProfile | None = None
+
+
+class HighMissingColumn(BaseModel):
+    column_name: str
+    missing_percentage: float
+
+
+class DataQualityFlags(BaseModel):
+    constant_columns: list[str]
+    possible_id_columns: list[str]
+    high_missing_columns: list[HighMissingColumn]
+
+
+class CorrelationPair(BaseModel):
+    column_1: str
+    column_2: str
+    correlation: float
+
+
 class DatasetUploadResponse(BaseModel):
     filename: str
     file_type: str
@@ -11,3 +61,6 @@ class DatasetUploadResponse(BaseModel):
     total_missing_values: int
     missing_values_per_column: dict[str, int]
     duplicate_row_count: int
+    column_profiles: list[ColumnProfile]
+    data_quality_flags: DataQualityFlags
+    strongest_correlations: list[CorrelationPair]

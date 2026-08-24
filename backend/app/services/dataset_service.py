@@ -4,6 +4,8 @@ from pathlib import Path
 import pandas as pd
 from fastapi import HTTPException, UploadFile, status
 
+from app.services.profiling_service import profile_dataset
+
 MAX_UPLOAD_SIZE_BYTES = 20 * 1024 * 1024
 SUPPORTED_FILE_TYPES = {".csv", ".xlsx", ".json", ".parquet"}
 
@@ -107,10 +109,12 @@ async def ingest_dataset(file: UploadFile) -> dict:
         dataframe = load_dataset(file_content, file_extension)
         validate_non_empty_dataset(dataframe)
 
-        return calculate_dataset_metadata(
+        dataset_metadata = calculate_dataset_metadata(
             dataframe=dataframe,
             filename=file.filename or "uploaded_dataset",
             file_extension=file_extension,
         )
+        dataset_metadata.update(profile_dataset(dataframe))
+        return dataset_metadata
     finally:
         await file.close()
