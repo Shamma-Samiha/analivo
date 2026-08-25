@@ -1,10 +1,17 @@
 from io import BytesIO
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 from fastapi import HTTPException, UploadFile, status
 
-from app.services.profiling_service import profile_dataset
+from app.services.dataset_store import (
+    delete_dataset,
+    retrieve_dataset,
+    retrieve_dataset_metadata,
+    save_dataset,
+)
+from app.services.profiling_service import profile_dataset, to_json_safe_value
 
 MAX_UPLOAD_SIZE_BYTES = 20 * 1024 * 1024
 SUPPORTED_FILE_TYPES = {".csv", ".xlsx", ".json", ".parquet"}
@@ -100,6 +107,20 @@ def calculate_dataset_metadata(
     }
 
 
+def get_dataset_not_found_error(dataset_id: str) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"Dataset with id '{dataset_id}' was not found.",
+    )
+
+
+def sanitize_preview_value(value: Any) -> str | int | float | bool | None:
+    safe_value = to_json_safe_value(value)
+    if safe_value is None or isinstance(safe_value, str | int | float | bool):
+        return safe_value
+    return str(safe_value)
+
+
 async def ingest_dataset(file: UploadFile) -> dict:
     try:
         file_extension = get_file_extension(file.filename)
@@ -109,12 +130,69 @@ async def ingest_dataset(file: UploadFile) -> dict:
         dataframe = load_dataset(file_content, file_extension)
         validate_non_empty_dataset(dataframe)
 
+        filename = file.filename or "uploaded_dataset"
+        file_type = file_extension.lstrip(".")
+        stored_metadata = save_dataset(
+            dataframe=dataframe,
+            filename=filename,
+            file_type=file_type,
+        )
+
         dataset_metadata = calculate_dataset_metadata(
             dataframe=dataframe,
-            filename=file.filename or "uploaded_dataset",
+            filename=filename,
             file_extension=file_extension,
         )
+        dataset_metadata["dataset_id"] = stored_metadata.dataset_id
         dataset_metadata.update(profile_dataset(dataframe))
         return dataset_metadata
     finally:
         await file.close()
+
+
+def get_stored_dataset_metadata(dataset_id: str) -> dict:
+    metadata = retrieve_dataset_metadata(dataset_id)
+    if metadata is None:
+        raise get_dataset_not_found_error(dataset_id)
+
+    return {
+        "dataset_id": metadata.dataset_id,
+        "filename": metadata.filename,
+        "file_type": metadata.file_type,
+        "number_of_rows": metadata.number_of_rows,
+        "number_of_columns": metadata.number_of_columns,
+        "created_at": metadata.created_at,
+    }
+
+
+def get_dataset_preview(dataset_id: str, limit: int = 10) -> dict:
+    dataframe = retrieve_dataset(dataset_id)
+    if dataframe is None:
+        raise get_dataset_not_found_error(dataset_id)
+
+    preview_dataframe = dataframe.head(limit)
+    rows = []
+    for row in preview_dataframe.to_dict(orient="records"):
+        rows.append(
+            {
+                str(column): sanitize_preview_value(value)
+                for column, value in row.items()
+            }
+        )
+
+    return {
+        "dataset_id": dataset_id,
+        "columns": [str(column) for column in dataframe.columns],
+        "rows": rows,
+    }
+
+
+def delete_stored_dataset(dataset_id: str) -> dict:
+    if not delete_dataset(dataset_id):
+        raise get_dataset_not_found_error(dataset_id)
+
+    return {
+        "dataset_id": dataset_id,
+        "deleted": True,
+        "message": "Dataset deleted successfully.",
+    }

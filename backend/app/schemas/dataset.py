@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel
 
 
@@ -52,6 +54,7 @@ class CorrelationPair(BaseModel):
 
 
 class DatasetUploadResponse(BaseModel):
+    dataset_id: str
     filename: str
     file_type: str
     number_of_rows: int
@@ -64,3 +67,24 @@ class DatasetUploadResponse(BaseModel):
     column_profiles: list[ColumnProfile]
     data_quality_flags: DataQualityFlags
     strongest_correlations: list[CorrelationPair]
+
+
+class DatasetMetadataResponse(BaseModel):
+    dataset_id: str
+    filename: str
+    file_type: str
+    number_of_rows: int
+    number_of_columns: int
+    created_at: datetime
+
+
+class DatasetPreviewResponse(BaseModel):
+    dataset_id: str
+    columns: list[str]
+    rows: list[dict[str, str | int | float | bool | None]]
+
+
+class DeleteDatasetResponse(BaseModel):
+    dataset_id: str
+    deleted: bool
+    message: str
